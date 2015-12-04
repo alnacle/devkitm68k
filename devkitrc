@@ -1,0 +1,9 @@
+#!/bin/sh 
+
+export NGDEV=$(dirname $(readlink -f "$0"))
+export NGPREFIX="m68k-elf"
+export NGTOOLCHAIN=${NGDEV}/toolchain
+
+export PATH=${PATH}:${NGTOOLCHAIN}/bin:${NGDEV}/bin 
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${NGTOOLCHAIN}/lib 
+
