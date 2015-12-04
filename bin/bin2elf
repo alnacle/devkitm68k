@@ -1,0 +1,20 @@
+#!/bin/sh
+# Convert a binary file to elf format.  Useful for loading with gdb.
+
+case "$#" in
+2)  ;;
+*)  echo "Usage: bin2elf input output" >&2
+    exit 1
+    ;;
+esac
+
+INPUT=$1
+OUTPUT=$2
+
+touch /tmp/empty.c
+${NGPREFIX}gcc -nostartfiles -nostdlib /tmp/empty.c -o $OUTPUT 2> /dev/null
+rm /tmp/empty.c
+
+${NGPREFIX}objcopy --remove-section=.text --remove-section=.data --remove-section=.bss --remove-section=.sbss --remove-section=.comment --remove-section=.note --add-section=.bin=$INPUT --adjust-section-vma=.bin --no-adjust-warnings --set-section-flags=.bin=alloc,load,data $OUTPUT 2> /dev/null
+
+return 0

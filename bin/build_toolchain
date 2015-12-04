@@ -1,0 +1,223 @@
+#!/bin/sh
+
+# define temporal workspace
+WORKSPACE=$(pwd)/workspace
+mkdir -p ${WORKSPACE}/src
+mkdir -p ${WORKSPACE}/build
+mkdir -p ${WORKSPACE}/orig
+
+if [ -z "$NGTOOLCHAIN" ];
+then
+    NGTOOLCHAIN=${WORKSPACE}/toolchain
+    echo "Warning: NGTOOLCHAIN variable is not set. Assuming ${NGTOOLCHAIN} as target directory"
+fi
+
+# destination directory
+PREFIX=${NGTOOLCHAIN}
+
+# set target architecture 
+TARGET=m68k-elf
+
+# Toolchain summary
+BINUTILSVERSION="2.24"
+GMPVERSION="6.0.0"
+MPFRVERSION="3.1.2"
+MPCVERSION="1.0.2"
+ISLVERSION="0.12.2"
+CLOOGVERSION="0.18.1"
+NEWLIBVERSION="2.2.0"
+GCCVERSION="4.9.2"
+GDBVERSION="7.5.1"
+
+download() {
+    tarball=$(echo $1 | sed 's/.*\///')
+    if [ ! -e ${tarball} ] ; then 
+        echo "${tarball}"
+        curl -O -# $1
+    else
+        echo "${tarball} already downloaded. Skipping"
+    fi
+}
+
+extract() {
+    if [ -d $(echo $1 | sed 's/\.tar\(.*\)//') ] ; then
+        return 
+    fi
+    if [ -f ${WORKSPACE}/orig/$1 ]; then
+        echo "Extracting $1"
+        case $1 in
+            *.tar.xz)  tar  xf ${WORKSPACE}/orig/$1 ;;
+            *.tar.gz)  tar zxf ${WORKSPACE}/orig/$1 ;;
+            *.tar.bz2) tar jxf ${WORKSPACE}/orig/$1 ;;
+            *) echo "error" ;;
+        esac
+    fi
+}
+
+# Download tarballs
+cd ${WORKSPACE}/orig 
+
+# GNU Binutils are a collection of binary tools 
+download "http://ftp.gnu.org/gnu/binutils/binutils-${BINUTILSVERSION}.tar.bz2"
+# GNU Multiple Precision Arithmetic Library
+download "http://ftp.gnu.org/gnu/gmp/gmp-${GMPVERSION}a.tar.xz"
+# GNU Multiple-precision floating-point rounding library
+download "http://ftp.gnu.org/gnu/mpfr/mpfr-${MPFRVERSION}.tar.xz"
+# GNU Multiple-precision C library
+download "http://ftp.gnu.org/gnu/mpc/mpc-${MPCVERSION}.tar.gz"
+# GNU Debugger
+download "http://ftp.gnu.org/gnu/gdb/gdb-${GDBVERSION}.tar.bz2"
+# GNU Compiler Collection 
+download "http://ftp.gnu.org/gnu/gcc/gcc-${GCCVERSION}/gcc-${GCCVERSION}.tar.gz"
+# C library for use on embedded systems.
+download "ftp://sourceware.org/pub/newlib/newlib-${NEWLIBVERSION}.tar.gz"
+# GNU Integer set library
+download "ftp://gcc.gnu.org/pub/gcc/infrastructure/isl-${ISLVERSION}.tar.bz2"
+# GNU Code generation library
+download "ftp://gcc.gnu.org/pub/gcc/infrastructure/cloog-${CLOOGVERSION}.tar.gz"
+
+# Unpack everything
+cd ${WORKSPACE}/src 
+
+for tarball in \
+"binutils-${BINUTILSVERSION}.tar.bz2" \
+"gmp-${GMPVERSION}a.tar.xz" \
+"mpfr-${MPFRVERSION}.tar.xz" \
+"mpc-${MPCVERSION}.tar.gz" \
+"isl-${ISLVERSION}.tar.bz2" \
+"cloog-${CLOOGVERSION}.tar.gz" \
+"newlib-${NEWLIBVERSION}.tar.gz" \
+"gcc-${GCCVERSION}.tar.gz" \
+"gdb-${GDBVERSION}.tar.bz2" 
+do 
+    extract $tarball 
+done
+
+# binutils compilation
+cd ${WORKSPACE}/build
+mkdir -p binutils
+cd binutils
+${WORKSPACE}/src/binutils-${BINUTILSVERSION}/configure \
+    --prefix=${PREFIX} \
+    --target=${TARGET} \
+    --disable-multilib
+make -j 4
+make install
+
+# gmp compilation
+cd ${WORKSPACE}/build
+mkdir -p gmp
+cd gmp
+${WORKSPACE}/src/gmp-${GMPVERSION}/configure \
+    --prefix=${PREFIX} \
+    --enable-cxx
+make -j 4
+make install
+
+# mpfr compilation
+cd ${WORKSPACE}/build
+mkdir -p mpfr
+cd mpfr
+${WORKSPACE}/src/mpfr-${MPFRVERSION}/configure \
+    --prefix=${PREFIX} \
+    --with-gmp=${PREFIX} 
+make -j 4
+make install
+
+# mpc compilation
+cd ${WORKSPACE}/build
+mkdir -p mpc
+cd mpc
+${WORKSPACE}/src/mpc-${MPCVERSION}/configure \
+    --prefix=${PREFIX} \
+    --with-gmp=${PREFIX} \
+    --with-mpfr=${PREFIX}
+make -j 4
+make install
+
+# isl compilation
+cd ${WORKSPACE}/build
+mkdir -p isl
+cd isl
+${WORKSPACE}/src/isl-${ISLVERSION}/configure \
+    --prefix=${PREFIX} \
+    --with-gmp-prefix=${PREFIX}
+make -j 4
+make install
+
+# cloog compilation
+cd ${WORKSPACE}/build
+mkdir -p cloog
+cd cloog
+${WORKSPACE}/src/cloog-${CLOOGVERSION}/configure \
+    --prefix=${PREFIX} \
+    --with-gmp-prefix=${PREFIX} \
+    --with-isl=system \
+    --with-isl-prefix=${PREFIX}
+make -j 4
+make install
+
+# gcc-stage1 compilation
+cd ${WORKSPACE}/build
+mkdir -p gcc-stage1
+cd gcc-stage1
+LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+${WORKSPACE}/src/gcc-${GCCVERSION}/configure \
+    --target=${TARGET}    \
+    --prefix=${PREFIX}    \
+    --with-gmp=${PREFIX}  \
+    --with-mpfr=${PREFIX} \
+    --with-mpc=${PREFIX}  \
+    --with-isl=${PREFIX}  \
+    --with-newlib         \
+    --disable-libssp      \
+    --disable-libgomp     \
+    --disable-libmudflap  \
+    --enable-languages="c"  
+make all-gcc -j 4
+make install-gcc
+
+# newlib compilation
+cd ${WORKSPACE}/build
+mkdir -p newlib
+cd newlib
+${WORKSPACE}/src/newlib-${NEWLIBVERSION}/configure \
+    --prefix=${PREFIX} \
+    --target=${TARGET} \
+    --disable-multilib 
+make -j 4
+make install
+
+# gcc-stage2 compilation
+cd ${WORKSPACE}/build
+mkdir -p gcc-stage2
+cd gcc-stage2
+LDFLAGS="-Wl,-rpath,${PREFIX}/lib" \
+${WORKSPACE}/src/gcc-${GCCVERSION}/configure \
+    --target=${TARGET}    \
+    --prefix=${PREFIX}    \
+    --with-gmp=${PREFIX}  \
+    --with-mpfr=${PREFIX} \
+    --with-mpc=${PREFIX}  \
+    --with-isl=${PREFIX}  \
+    --with-newlib         \
+    --disable-shared      \
+    --disable-threads     \
+    --disable-libssp      \
+    --disable-libgomp     \
+    --disable-libmudflap  \
+    --enable-languages="c"  
+make all -j 4
+make install
+
+# GDB compilation
+cd ${WORKSPACE}/build
+mkdir -p gdb
+cd gdb
+${WORKSPACE}/src/gdb-${GDBVERSION}/configure \
+    --target=${TARGET} \
+    --enable-sim-trace \
+    --enable-sim-stdio \
+    --prefix=${PREFIX} 
+make -j 4
+make install
