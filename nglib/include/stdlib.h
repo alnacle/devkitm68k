@@ -1,11 +1,16 @@
-
 #ifndef __STDLIB_H__
 #define __STDLIB_H__
 
-/* Implemented on memory.s */ 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-extern void*	memcpy(void *dest, const void *src, size_t count);
-extern void*	memmove(void *dest, const void *src, size_t count);
-extern void*	memset(void *dest, int ch, size_t count);
+#define NULL 0
 
-#endif // __STDLIB_H__
+typedef unsigned int   size_t;
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* __STDLIB_H__ */
